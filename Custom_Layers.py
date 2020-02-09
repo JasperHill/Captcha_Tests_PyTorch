@@ -51,6 +51,7 @@ class BasisRotationOperation(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
+        print('basis rotation backward')
         grad_output = grad_output.detach().numpy()
         input, operator = ctx.saved_tensors
         input, operator = input.numpy(), operator.numpy()
@@ -64,6 +65,7 @@ class BasisRotationOperation(Function):
         
         for sample in input:
             for i in range(input_channels):
+                print('sample no. {} | i={}'.format(c,i))
                 for j in range(mat_dim):
                     for k in range(mat_dim):
                         for l in range(output_channels):
@@ -75,6 +77,7 @@ class BasisRotationOperation(Function):
 
 
             c += 1
+        print('complete')
         return torch.from_numpy(grad_input).to(torch.float), torch.from_numpy(grad_me).to(torch.float)
 
 
@@ -132,6 +135,7 @@ class ProjectionOperation(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
+        print('projection backward')        
         grad_output = grad_output.detach().numpy()
         input, operator, operator_t = ctx.saved_tensors
         input, operator, operator_t = input.numpy(), operator.numpy(), operator_t.numpy()
@@ -156,7 +160,7 @@ class ProjectionOperation(Function):
                                     grad_me[c][l][i][m][j]   += sample[i][j][k]*operator_t[l][i][k][n]
                                     grad_me_t[c][l][i][k][n] += operator[l][i][m][j]*sample[i][j][k]
             c += 1
-                                
+        print('complete')
         return torch.from_numpy(grad_input).to(torch.float), torch.from_numpy(grad_me).to(torch.float), torch.from_numpy(grad_me_t).to(torch.float)
 
 
@@ -215,7 +219,9 @@ class VectorizerFunction(Function):
         ctx.save_for_backward(torch.from_numpy(input).to(torch.float), torch.from_numpy(X).to(torch.float))
         return torch.as_tensor(output, dtype=torch.float)
 
+    @staticmethod
     def backward(ctx, grad_output):
+        print('vectorization backward')        
         grad_output = grad_output.detach().numpy()
         input, X = ctx.saved_tensors
         input, X = input.numpy(), X.numpy()
@@ -237,6 +243,7 @@ class VectorizerFunction(Function):
                             grad_input[c][j][k][l] += X[i][j][l]
             c += 1
 
+        print('complete')
         return torch.from_numpy(grad_input).to(torch.float), torch.from_numpy(grad_ve).to(torch.float)
         
 class Vectorizer(nn.Module):
