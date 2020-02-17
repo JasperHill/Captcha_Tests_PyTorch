@@ -195,9 +195,6 @@ train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers
 test_ds = CaptchaDataset(test_dir, transform=transforms.Compose([transforms.ToTensor()]))
 test_dl = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
-## reference vectors to be used in loss calculations
-ref_synth_guesses = torch.from_numpy(np.ones([BATCH_SIZE,1])).to(torch.double)
-ref_auth_guesses = torch.from_numpy(np.zeros([BATCH_SIZE,1])).to(torch.double)
 
 GEN_SAVE_PATH = "./build_tools/gen_saves.pth"
 DISC_SAVE_PATH = "./build_tools/disc_saves.pth"
@@ -217,17 +214,19 @@ disc_train_loss_hist = []
 gen_test_loss_hist   = []
 disc_test_loss_hist  = []
 
+train_imax = len(train_dl)-1
+test_imax = len(test_dl)-1
+
 ## train the GAN
 print('epoch',' | ','generator training loss',' | ','generator testing loss',' | ','discriminator training loss',' | ','discriminator testing loss')
 for epoch in EPOCHS:
     gen_loss = 0.0
     disc_loss = 0.0
-
-    print('beginning training step')
     i = 0
-    
+
+    print('## training step ##')
     for data in train_dl:
-        print('i: ',i)
+        print('example {}/{}'.format(i,train_imax))
         auth_imgs, string_labels, mat_labels, sparse_labels = data['images'], data['string labels'], data['mat labels'], data['sparse labels']
 
         gen_optimizer.zero_grad()
@@ -237,17 +236,16 @@ for epoch in EPOCHS:
         synth_guesses = discriminator(synth_imgs).to(torch.double)
         auth_guesses = discriminator(auth_imgs).to(torch.double)
 
+        ref_auth_guesses = torch.ones_like(auth_guesses).to(torch.double)
+        ref_synth_guesses = torch.zeros_like(synth_guesses).to(torch.double)
+        
         generator_loss = F.binary_cross_entropy(synth_guesses, ref_auth_guesses, reduction='sum')
         discriminator_loss  = F.binary_cross_entropy(synth_guesses, ref_synth_guesses, reduction='sum')
         discriminator_loss += F.binary_cross_entropy(auth_guesses, ref_auth_guesses, reduction='sum')
-        print('generator_loss = {}, discriminator_loss = {}'.format(generator_loss,discriminator_loss))
-        print('## GENERATOR BACKPROP ##')
+
         generator_loss.backward(retain_graph=True)
-        print('## DISCRIMINATOR BACKPROP ##')
         discriminator_loss.backward(retain_graph=True)
-        print('## GENERATOR OPTIMIZER ##')
         gen_optimizer.step()
-        print('## DISCRIMINATOR OPTIMIZER ##')
         disc_optimizer.step()
 
         gen_loss += generator_loss.item()
@@ -258,15 +256,18 @@ for epoch in EPOCHS:
     disc_train_loss_hist.append(disc_loss/len(train_ds))
 
     ## test the GAN at the end of each training epoch
-    print('beginning testing step')
+    print('## testing step ##')
     with torch.no_grad():
         for i, data in enumerate(test_dl, 0):
-            print('i: ',i)
-            auth_imgs, string_labels, mat_labels, sparse_labels = data['image'], data['string label'], data['mat label'], data['sparse label']
+            print('example {}/{} '.format(i,test_imax))
+            auth_imgs, string_labels, mat_labels, sparse_labels = data['images'], data['string labels'], data['mat labels'], data['sparse labels']
 
             synth_imgs = generator(sparse_labels)
             synth_guesses = discriminator(synth_imgs)
             auth_guesses = discriminator(auth_imgs)
+            
+            ref_auth_guesses = torch.ones_like(auth_guesses).to(torch.double)
+            ref_synth_guesses = torch.zeros_like(synth_guesses).to(torch.double)
 
             generator_loss = F.binary_cross_entropy(synth_guesses, ref_auth_guesses, reduction='sum')
             discriminator_loss  = F.binary_cross_entropy(synth_guesses, ref_synth_guesses, reduction='sum')

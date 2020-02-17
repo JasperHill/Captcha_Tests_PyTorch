@@ -26,6 +26,8 @@ at::Tensor BasisRotation_forward(torch::Tensor input, torch::Tensor R)
   int64_t batch_size = input_dims[0];
   int64_t input_channels = input_dims[1];
   int64_t inner_dim = input_dims[2];
+
+  int64_t n,i,j;
   
   auto options = torch::TensorOptions().dtype(torch::kFloat64);  
   auto output = torch::zeros({batch_size, output_channels, inner_dim, inner_dim}, options);
@@ -38,21 +40,27 @@ at::Tensor BasisRotation_forward(torch::Tensor input, torch::Tensor R)
   //auto R_a = R.accessor<double,4>();
   //auto input_a = input.accessor<double,4>();
   //auto output_a = output.accessor<double,4>();
-  
-  for (int n = 0; n < batch_size; n++)
-    {
-      for (int i = 0; i < output_channels; i++)
-	{
-	  for (int j = 0; j < input_channels; j++)
-	    {
-	      //auto O = R_a[i][j];
-	      //auto mat = input_a[n][j];
-	      
-	      output[n][i] += at::chain_matmul({R[i][j], input[n][i], at::transpose(R[i][j],0,1)});
-	    }
-	}
-    }
 
+  //optimize with some nifty parallelization
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, R, input)	\
+  shared(n, i, output)							\
+  private(j)
+  {
+#pragma omp for nowait
+    
+    for (n = 0; n < batch_size; n++)
+      {
+	for (i = 0; i < output_channels; i++)
+	  {
+	    for (j = 0; j < input_channels; j++)
+	      {
+		output[n][i] += at::chain_matmul({R[i][j], input[n][i], at::transpose(R[i][j],0,1)});
+	      }
+	  }
+      }
+  }
+  
   return output;
 }//end of BasisRotation_forward
 
@@ -67,9 +75,8 @@ std::vector< at::Tensor > BasisRotation_backward(torch::Tensor input, torch::Ten
   int64_t inner_dim = input_dims[2];
 
   int64_t i,ii,j,jj,k,kk,n;
-  double coeff;
   auto options = torch::TensorOptions().dtype(torch::kFloat64);
-  
+
   auto grad_input = torch::zeros_like(input, options);
   auto grad_R = torch::zeros({output_channels, input_channels, inner_dim, inner_dim}, options);
 
@@ -80,30 +87,77 @@ std::vector< at::Tensor > BasisRotation_backward(torch::Tensor input, torch::Ten
   auto grad_input_a = grad_input.accessor<double,4>();
   auto grad_output_a = grad_output.accessor<double,4>();
 
-  //compute partial derivatives of outputs w.r.t. the inputs and operator
-  for (n = 0; n < batch_size; n++)
+
+  //parallel loop for grad_input tensor
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, inner_dim, R_a, grad_output_a, input_a) \
+  shared(n, ii, j, k, grad_input_a)					\
+  private(i,jj,kk)
+  {
+#pragma omp for nowait
+    
+    //shared loop
+    for (n = 0; n < batch_size; n++)
+      {
+	for (ii = 0; ii < input_channels; ii++)
+	  {
+	    for (j = 0; j < inner_dim; j++)
+	      {
+		for (k = 0; k < inner_dim; k++)
+		  {
+		    //private loop
+		    for (i = 0; i < output_channels; i++)
+		      {
+			for (jj = 0; jj < inner_dim; jj++)
+			  {
+			    for (kk = 0; kk < inner_dim; kk++)
+			      {
+				grad_input_a[n][ii][j][k] += R_a[i][ii][kk][j]*R_a[i][ii][jj][k]*grad_output_a[n][i][kk][jj];
+			      }
+			  }
+		      }		      
+		  }
+	      }
+	  }
+      }
+  }
+
+
+
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, inner_dim, R_a, grad_output_a, input_a) \
+  shared(i, ii, j, k, grad_R_a)						\
+  private(n,jj,kk)
     {
+#pragma omp for nowait
+      //shared loop
       for (i = 0; i < output_channels; i++)
-	{	  
+	{
 	  for (ii = 0; ii < input_channels; ii++)
 	    {
 	      for (j = 0; j < inner_dim; j++)
 		{
-		  for (jj = 0; jj < inner_dim; jj++)
+		  for (k = 0; k < inner_dim; k++)
 		    {
-		      for (k = 0; k < inner_dim; k++)
+		      //private loop
+		      for (n = 0; n < batch_size; n++)
 			{
-			  for (kk = 0; kk < inner_dim; kk++)
+			  for (jj = 0; jj < inner_dim; jj++)
 			    {
-			      grad_input_a[n][ii][j][k] += R_a[i][ii][kk][j]*R_a[i][ii][jj][k]*grad_output_a[n][i][kk][jj];
-			      grad_R_a[i][ii][j][k] += input_a[n][ii][k][jj]*R_a[i][ii][kk][jj]*grad_output_a[n][i][j][kk];			      
+			      for (kk = 0; kk < inner_dim; kk++)
+				{
+				  grad_R_a[i][ii][j][k] += input_a[n][ii][k][jj]*R_a[i][ii][kk][jj]*grad_output_a[n][i][j][kk];
+				}
 			    }
-			}
+			}		      
 		    }
 		}
 	    }
 	}
     }
+
+
+
   
   return {grad_input, grad_R};
 }//end of BasisRotation_backward
@@ -128,23 +182,33 @@ at::Tensor Projection_forward(torch::Tensor input, torch::Tensor P, torch::Tenso
   int64_t Mp = operator_dims[2];
   int64_t Np = operator_t_dims[3];
 
+  int64_t n,i,j;
+  
   auto options = torch::TensorOptions().dtype(torch::kFloat64);
   auto output = torch::zeros({batch_size, output_channels, Mp, Np}, options);
-  
-  for (int n = 0; n < batch_size; n++)
-    {
-      for (int i = 0; i < output_channels; i++)
-	{
-	  for (int j = 0; j < input_channels; j++)
-	    {
-	      //auto O = R_a[i][j];
-	      //auto mat = input_a[n][j];
-	      
-	      output[n][i] += at::chain_matmul({P[i][j], input[n][j], Pt[i][j]});
-	    }
-	}
-    }
 
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, P, input)	\
+  shared(n, i, output)							\
+  private(j)
+  {    
+#pragma omp for nowait    
+    
+    for (n = 0; n < batch_size; n++)
+      {
+	for (i = 0; i < output_channels; i++)
+	  {
+	    for (j = 0; j < input_channels; j++)
+	      {
+		//auto O = R_a[i][j];
+		//auto mat = input_a[n][j];
+		
+		output[n][i] += at::chain_matmul({P[i][j], input[n][j], Pt[i][j]});
+	      }
+	  }
+      }
+  }
+  
   return output;
 }//end of Projection_forward
 
@@ -163,7 +227,6 @@ std::vector< at::Tensor > Projection_backward(torch::Tensor input, torch::Tensor
   int64_t Np = operator_t_dims[3];
 
   int64_t i,ii,j,jp,k,kp,n;
-  double coeff;
   auto options = torch::TensorOptions().dtype(torch::kFloat64);
   
   auto grad_input = torch::zeros_like(input, options);
@@ -179,24 +242,100 @@ std::vector< at::Tensor > Projection_backward(torch::Tensor input, torch::Tensor
   auto grad_input_a = grad_input.accessor<double,4>();
   auto grad_output_a = grad_output.accessor<double,4>();
 
-  //compute partial derivatives of outputs w.r.t. the inputs and operators
-  for (n = 0; n < batch_size; n++)
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, M, N, Mp, Np, P_a, Pt_a, input_a, grad_output_a) \
+  shared(n, ii, j, k, grad_input_a)					\
+  private(i,jp,kp)
+  {
+#pragma omp for nowait
+    //shared loop
+    for (n = 0; n < batch_size; n++)
+      {
+	for (ii = 0; ii < input_channels; ii++)
+	  {
+	    for (j = 0; j < M; j++)
+	      {
+		for (k = 0; k < N; k++)
+		  {
+
+		    //private loop
+		    for (i = 0; i < output_channels; i++)
+		      {
+			for (jp = 0; jp < Mp; jp++)
+			  {
+			    for (kp = 0; kp < Np; kp++)
+			      {
+				grad_input_a[n][ii][j][k] += P_a[i][ii][jp][j]*Pt_a[i][ii][k][kp]*grad_output_a[n][i][jp][kp];
+			      }
+			  }
+		      }
+
+		    
+		  }
+	      }
+	  }
+      }
+  }
+    
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, M, N, Mp, Np, P_a, Pt_a, input_a, grad_output_a) \
+  shared(i,ii,jp,j)							\
+  private(n,k,kp)
+  {
+  
+#pragma omp for nowait
+    //shared loop
+    for (i = 0; i < output_channels; i++)
+      {
+	for (ii = 0; ii < input_channels; ii++)
+	  {
+	    for (jp = 0; jp < Mp; jp++)
+	      {
+		for (j = 0; j < M; j++)
+		  {
+
+		    //private loop
+		    for (n = 0; n < batch_size; n++)
+		      {
+			for (k = 0; k < N; k++)
+			  {
+			    for (kp = 0; kp < Np; kp++)
+			      {
+				grad_P_a[i][ii][jp][j] += input_a[n][ii][j][k]*Pt_a[i][ii][k][kp]*grad_output_a[n][i][jp][kp];
+			      }
+			  }
+		      }
+		  }
+	      }
+	  }
+      }
+  }
+    
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, M, N, Mp, Np, P_a, Pt_a, input_a, grad_output_a) \
+  shared(i,ii,k,kp)							\
+  private(n,j,jp)
     {
+#pragma omp for nowait
+      //shared loop
       for (i = 0; i < output_channels; i++)
 	{
 	  for (ii = 0; ii < input_channels; ii++)
 	    {
-	      for (jp = 0; jp < Mp; jp++)
+	      for (k = 0; k < N; k++)
 		{
-		  for (j = 0; j < M; j++)
+		  for (kp = 0; kp < Np; kp++)
 		    {
-		      for (k = 0; k < N; k++)
+		      
+		      //private loop
+		      for (n = 0; n < batch_size; n++)
 			{
-			  for (kp = 0; kp < Np; kp++)
+			  for (j = 0; j < M; j++)
 			    {
-			      grad_input_a[n][ii][j][k] += P_a[i][ii][jp][j]*Pt_a[i][ii][k][kp]*grad_output_a[n][i][jp][kp];
-			      grad_P_a[i][ii][jp][j] += input_a[n][ii][j][k]*Pt_a[i][ii][k][kp]*grad_output_a[n][i][jp][kp];
-			      grad_Pt_a[i][ii][k][kp] += P_a[i][ii][jp][j]*input_a[n][ii][j][k]*grad_output_a[n][i][jp][kp];
+			      for (jp = 0; jp < Mp; jp++)
+				{
+				  grad_Pt_a[i][ii][k][kp] += P_a[i][ii][jp][j]*input_a[n][ii][j][k]*grad_output_a[n][i][jp][kp];
+				}
 			    }
 			}
 		    }
@@ -204,7 +343,7 @@ std::vector< at::Tensor > Projection_backward(torch::Tensor input, torch::Tensor
 	    }
 	}
     }
-  
+    
   return {grad_input, grad_P, grad_Pt};
 }//end of Projection_backward
 
@@ -226,20 +365,29 @@ at::Tensor Vectorizer_forward(torch::Tensor input, torch::Tensor v)
   int64_t M = input_dims[2];
   int64_t N = input_dims[3];
 
+  int64_t n,i,j;
   auto options = torch::TensorOptions().dtype(torch::kFloat64);
   auto output = torch::zeros({batch_size, output_channels, M}, options);
-  
-  for (int n = 0; n < batch_size; n++)
-    {
-      for (int i = 0; i < output_channels; i++)
-	{
-	  for (int j = 0; j < input_channels; j++)
-	    {
-	      output[n][i] += at::linear(input[n][j], v[i][j]);
-	    }
-	}
-    }
 
+#pragma omp parallel default(none) schedule(dynamic)		\
+  firstprivate(batch_size, output_channels, input_channels, v)	\
+  shared(n, i, output)						\
+  private(j)
+  {
+#pragma omp for nowait
+    
+    for (n = 0; n < batch_size; n++)
+      {
+	for (i = 0; i < output_channels; i++)
+	  {
+	    for (j = 0; j < input_channels; j++)
+	      {
+		output[n][i] += at::linear(input[n][j], v[i][j]);
+	      }
+	  }
+      }
+  }
+  
   return output;
 }//endof Vectorizer_forward
 
@@ -255,7 +403,6 @@ std::vector< at::Tensor > Vectorizer_backward(torch::Tensor input, torch::Tensor
   int64_t N = input_dims[3];
 
   int64_t i,ii,j,k,n;
-  double coeff;
   auto options = torch::TensorOptions().dtype(torch::kFloat64);
 
   auto grad_input = torch::zeros_like(input, options);
@@ -268,25 +415,62 @@ std::vector< at::Tensor > Vectorizer_backward(torch::Tensor input, torch::Tensor
   auto grad_input_a = grad_input.accessor<double,4>();
   auto grad_output_a = grad_output.accessor<double,3>();
 
-  //compute partial derivatives of outputs w.r.t. the inputs and vector
-  for (n = 0; n < batch_size; n++)
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, v_a, grad_output_a)	\
+  private(i)								\
+  shared(n, ii, j, k, grad_input_a)					\
+
+  {
+#pragma omp for nowait							\
+  //shared loop
+    for (n = 0; n < batch_size; n++)
+      {
+	for (ii = 0; ii < input_channels; ii++)
+	  {
+	    for (j = 0; j < M; j++)
+	      {
+		for (k = 0; k < N; k++)
+		  {
+
+		    //private loop
+		    for (i = 0; i < output_channels; i++)
+		      {
+			grad_input_a[n][ii][j][k] += v_a[i][ii][k]*grad_output_a[n][i][j];
+		      }
+		  }
+	      }
+	  }
+      }
+  }
+
+  
+#pragma omp parallel default(none) schedule(dynamic)			\
+  firstprivate(batch_size, output_channels, input_channels, v_a, grad_output_a)	\
+  private(n,j)								\
+  shared(i, ii, k, grad_input_a)					\
+  {
+#pragma omp for nowait				\
+  //shared loop
+  for (i = 0; i < output_channels; i++)
     {
-      for (i = 0; i < output_channels; i++)
-	{	  
-	  for (ii = 0; ii < input_channels; ii++)
+      for (ii = 0; ii < input_channels; ii++)
+	{
+	  for (k = 0; k < N; k++)
 	    {
-	      for (j = 0; j < M; j++)
+	      
+	      //private loop
+	      for (n = 0; n < batch_size; n++)
 		{
-		  for (k = 0; k < N; k++)
+		  for (j = 0; j < output_channels; j++)
 		    {
-		      grad_input_a[n][ii][j][k] += v_a[i][ii][k]*grad_output_a[n][i][j];
 		      grad_v_a[i][ii][k] += input_a[n][ii][j][k]*grad_output_a[n][i][j];
 		    }
 		}
 	    }
-	}
-    }
-  
+	  }
+      }
+
+
   return {grad_input, grad_v};
 }//end of Vectorizer_backward
 
