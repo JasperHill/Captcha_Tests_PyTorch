@@ -1,0 +1,6 @@
+Custom_Layers.cpp
+setup.py
+basis_rot_cpp.egg-info/PKG-INFO
+basis_rot_cpp.egg-info/SOURCES.txt
+basis_rot_cpp.egg-info/dependency_links.txt
+basis_rot_cpp.egg-info/top_level.txt

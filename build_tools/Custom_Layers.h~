@@ -1,0 +1,34 @@
+#include <torch/extension.h>
+#include <stdlib.h>
+
+struct BasisRotation : torch::nn::Module
+{
+  BasisRotation(int64_t input_channels, int64_t output_channels, int64_t dim)
+    {
+      r = torch::zeros({output_channels, input_channels, dim, dim});
+
+      //set every operator in r to identity
+      for (int i = 0; i < output_channels; i++)
+	{
+	  for (int j = 0; j < input_channels; j++)
+	    {
+	      r[i][j] = torch::eye(dim);
+	    }
+	}
+      
+      R = register_parameter("W", r);
+    }
+
+  torch::Tensor R;
+  torch::Tensor inpt;
+
+  torch::Tensor forward(torch::Tensor input)
+    {
+      torch::Tensor temp = at::tensordot({R,input}, {1,2}, {1,2});
+      torch::Tensor output = at::tensordot({temp, at::transpose(R, 2, 3)}, {1,2}, {1,2});
+
+      inpt = input;
+      return output;
+    }
+
+};

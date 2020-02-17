@@ -1,7 +1,10 @@
 from __future__ import absolute_import, division
+import os
+import sys
+
+sys.path.append(os.path.join(os.getcwd(),'build_tools'))
 
 import re
-import os
 import time
 import pathlib
 import string
@@ -32,10 +35,10 @@ N            = 5
 
 IMG_HEIGHT   =  50
 IMG_WIDTH    = 200
-IMG_CHANNELS =   4
+IMG_CHANNELS =   3
 
 #############################################################################################################################
-##  preprocess data and train the GAn
+##  preprocess data and train the GAN
 ##  
 #############################################################################################################################
 
@@ -79,15 +82,15 @@ D = len(alphanumeric)
 N = 5 ## number of characters in each captcha title
 
 def char_to_vec(char):
-    vec = np.zeros(D, dtype=np.float32)
+    vec = np.zeros(D, dtype=np.double)
     match = re.search(char,alphanumeric)
     vec[match.span()[0]] = 1
     return vec
 
 def string_to_mat_and_sparse_mat(string):
     N = len(string)
-    mat = np.zeros([N,D], dtype=np.float32)
-    sparse_mat = np.zeros([N,D,D], dtype=np.float32)
+    mat = np.zeros([N,D], dtype=np.double)
+    sparse_mat = np.zeros([N,D,D], dtype=np.double)
 
     d = 0
     for char in string:
@@ -133,7 +136,6 @@ class CaptchaDataset(Dataset):
     def __init__(self, imgdir, transform=None):
         super(Dataset, self).__init__()
         self.imgdir = imgdir
-        #self.fnames = list(pathlib.Path(imgdir).glob('*'))
         self.fnames = os.listdir(imgdir)
         self.transform = transform
 
@@ -149,6 +151,9 @@ class CaptchaDataset(Dataset):
         string_label, mat_label, sparse_label = generate_labels(fname)
 
         if self.transform: img = self.transform(img)
+        
+        ## pngs contain alpha channels while jpgs do not ## so return img[:3] to clip the alpha channel if present
+        img = img[:3]
         
         return {'images': img, 'string labels': string_label, 'mat labels': mat_label, 'sparse labels': sparse_label}
 
@@ -191,11 +196,11 @@ test_ds = CaptchaDataset(test_dir, transform=transforms.Compose([transforms.ToTe
 test_dl = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
 ## reference vectors to be used in loss calculations
-ref_synth_guesses = torch.from_numpy(np.ones([BATCH_SIZE,1])).to(torch.float)
-ref_auth_guesses = torch.from_numpy(np.zeros([BATCH_SIZE,1])).to(torch.float)
+ref_synth_guesses = torch.from_numpy(np.ones([BATCH_SIZE,1])).to(torch.double)
+ref_auth_guesses = torch.from_numpy(np.zeros([BATCH_SIZE,1])).to(torch.double)
 
-GEN_SAVE_PATH = "./gen_saves.pth"
-DISC_SAVE_PATH = "./disc_saves.pth"
+GEN_SAVE_PATH = "./build_tools/gen_saves.pth"
+DISC_SAVE_PATH = "./build_tools/disc_saves.pth"
 
 generator = Generator(input_shape=[N,D,D])
 discriminator = Discriminator(input_shape=[IMG_CHANNELS,IMG_HEIGHT,IMG_WIDTH])
@@ -220,6 +225,7 @@ for epoch in EPOCHS:
 
     print('beginning training step')
     i = 0
+    
     for data in train_dl:
         print('i: ',i)
         auth_imgs, string_labels, mat_labels, sparse_labels = data['images'], data['string labels'], data['mat labels'], data['sparse labels']
@@ -227,18 +233,21 @@ for epoch in EPOCHS:
         gen_optimizer.zero_grad()
         disc_optimizer.zero_grad()
 
-        synth_imgs = generator(sparse_labels)
-        synth_guesses = discriminator(synth_imgs)
-        auth_guesses = discriminator(auth_imgs)
+        synth_imgs = generator(sparse_labels).to(torch.double)
+        synth_guesses = discriminator(synth_imgs).to(torch.double)
+        auth_guesses = discriminator(auth_imgs).to(torch.double)
 
         generator_loss = F.binary_cross_entropy(synth_guesses, ref_auth_guesses, reduction='sum')
         discriminator_loss  = F.binary_cross_entropy(synth_guesses, ref_synth_guesses, reduction='sum')
         discriminator_loss += F.binary_cross_entropy(auth_guesses, ref_auth_guesses, reduction='sum')
-
-        generator_loss.backward()
-        discriminator_loss.backward()
-
+        print('generator_loss = {}, discriminator_loss = {}'.format(generator_loss,discriminator_loss))
+        print('## GENERATOR BACKPROP ##')
+        generator_loss.backward(retain_graph=True)
+        print('## DISCRIMINATOR BACKPROP ##')
+        discriminator_loss.backward(retain_graph=True)
+        print('## GENERATOR OPTIMIZER ##')
         gen_optimizer.step()
+        print('## DISCRIMINATOR OPTIMIZER ##')
         disc_optimizer.step()
 
         gen_loss += generator_loss.item()

@@ -1,0 +1,20 @@
+ninja_required_version = 1.3
+cxx = c++
+
+cflags = -Wno-unused-result -Wsign-compare -Wunreachable-code -DNDEBUG -g -fwrapv -O3 -Wall -Wstrict-prototypes -I/Users/jasperhill/anaconda3/include -arch x86_64 -I/Users/jasperhill/anaconda3/include -arch x86_64 -I/Users/jasperhill/anaconda3/lib/python3.7/site-packages/torch/include -I/Users/jasperhill/anaconda3/lib/python3.7/site-packages/torch/include/torch/csrc/api/include -I/Users/jasperhill/anaconda3/lib/python3.7/site-packages/torch/include/TH -I/Users/jasperhill/anaconda3/lib/python3.7/site-packages/torch/include/THC -I/Users/jasperhill/anaconda3/include/python3.7m -c
+post_cflags = -DTORCH_API_INCLUDE_EXTENSION_H -DTORCH_EXTENSION_NAME=custom_layers_cpp -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++14
+ldflags = 
+
+rule compile
+  command = $cxx -MMD -MF $out.d $cflags -c $in -o $out $post_cflags
+  depfile = $out.d
+  deps = gcc
+
+
+
+build /Users/jasperhill/Documents/Projects/PyTorch/GAN/Captcha_Test/build_tools/build/temp.macosx-10.9-x86_64-3.7/Custom_Layers.o: compile /Users/jasperhill/Documents/Projects/PyTorch/GAN/Captcha_Test/build_tools/Custom_Layers.cpp
+
+
+
+
+
