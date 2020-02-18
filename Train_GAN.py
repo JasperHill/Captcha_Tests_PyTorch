@@ -43,7 +43,7 @@ IMG_CHANNELS =   3
 #############################################################################################################################
 
 """
-CaptchaSolver.py is an adversarial generative neural network inspired by the work of
+This project is an adversarial generative neural network inspired by the work of
 Ye et al., Yet Another Captcha Solver: An Adversarial Generative Neural Network Based Approach
 
 The configuration herein is much simpler and less robust, but it follows the same method:
@@ -53,8 +53,12 @@ attempting to discern authentic and synthetic images. The two work toward opposi
 training ceases when the discriminator is unable to correctly classify a certain fraction of the
 inputs.
 
-A solver is then trained with synthetic captcha images from the generator. Finally, the solver
-is refined via training with the authentic captchas.
+Unlike conventional GANs, this model features custom-built layers that function like
+quantum-mechanical operators. The generator and discriminator are nearly inversely configured w.r.t
+each other. The discriminator does feature a sigmoid activation on its output to constrain the
+output.
+
+TODO: build a solver
 """
 
 ## note: one of the png files from this source is improperly named; mv 3bnfnd.png 3bfnd.png
@@ -251,8 +255,8 @@ for epoch in EPOCHS:
         ref_synth_guesses = torch.zeros_like(synth_guesses).to(torch.double)
         
         generator_loss = F.binary_cross_entropy(synth_guesses, ref_auth_guesses, reduction='sum')
-        discriminator_loss  = F.binary_cross_entropy(synth_guesses, ref_synth_guesses, reduction='sum')
-        discriminator_loss += F.binary_cross_entropy(auth_guesses, ref_auth_guesses, reduction='sum')
+        discriminator_loss  = torch.add(F.binary_cross_entropy(synth_guesses, ref_synth_guesses, reduction='sum'),
+                                        F.binary_cross_entropy(auth_guesses, ref_auth_guesses, reduction='sum'))
 
         generator_loss.backward(retain_graph=True)
         discriminator_loss.backward(retain_graph=True)
