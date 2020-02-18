@@ -214,19 +214,30 @@ disc_train_loss_hist = []
 gen_test_loss_hist   = []
 disc_test_loss_hist  = []
 
-train_imax = len(train_dl)-1
-test_imax = len(test_dl)-1
+#train_imax = len(train_dl)-1
+#test_imax = len(test_dl)-1
 
+train_imax = 10
+test_imax = 10
+
+status_labels = ['generator training loss',
+                'generator testing loss',
+                'discriminator training loss',
+                'discriminator testing loss']
 ## train the GAN
-print('epoch',' | ','generator training loss',' | ','generator testing loss',' | ','discriminator training loss',' | ','discriminator testing loss')
+
+print('|{: ^10}'.format('epoch'), end='')
+for lbl in status_labels:
+    print('|{: ^30}'.format(lbl), end='')
+print('|')
+
 for epoch in EPOCHS:
     gen_loss = 0.0
     disc_loss = 0.0
     i = 0
 
-    print('## training step ##')
     for data in train_dl:
-        print('example {}/{}'.format(i,train_imax))
+        if (i >= train_imax): break
         auth_imgs, string_labels, mat_labels, sparse_labels = data['images'], data['string labels'], data['mat labels'], data['sparse labels']
 
         gen_optimizer.zero_grad()
@@ -256,15 +267,14 @@ for epoch in EPOCHS:
     disc_train_loss_hist.append(disc_loss/len(train_ds))
 
     ## test the GAN at the end of each training epoch
-    print('## testing step ##')
     with torch.no_grad():
         for i, data in enumerate(test_dl, 0):
-            print('example {}/{} '.format(i,test_imax))
+            if (i >= test_imax): break
             auth_imgs, string_labels, mat_labels, sparse_labels = data['images'], data['string labels'], data['mat labels'], data['sparse labels']
 
-            synth_imgs = generator(sparse_labels)
-            synth_guesses = discriminator(synth_imgs)
-            auth_guesses = discriminator(auth_imgs)
+            synth_imgs = generator(sparse_labels).to(torch.double)
+            synth_guesses = discriminator(synth_imgs).to(torch.double)
+            auth_guesses = discriminator(auth_imgs).to(torch.double)
             
             ref_auth_guesses = torch.ones_like(auth_guesses).to(torch.double)
             ref_synth_guesses = torch.zeros_like(synth_guesses).to(torch.double)
@@ -279,16 +289,15 @@ for epoch in EPOCHS:
         gen_test_loss_hist.append(gen_loss/len(train_ds))
         disc_test_loss_hist.append(disc_loss/len(train_ds))
 
-    print('%(epoch)i' % {'epoch': epoch},
-          ' | ',
-          '%(gtrl)5f' % {'gtrl': gen_train_loss_hist[-1]},
-          ' | ',
-          '%(gtsl)5f' % {'gtsl': gen_test_loss_hist[-1]},
-          ' | ',
-          '%(dtrl)5f' % {'dtrl': disc_train_loss_hist[-1]},
-          ' | ',
-          '%(dtsl)5f' % {'dtsl': disc_test_loss_hist[-1]})
-
+    ## print epoch results
+    nums = [gen_train_loss_hist[-1],
+            gen_test_loss_hist[-1],
+            disc_train_loss_hist[-1],
+            disc_test_loss_hist[-1]]
+    print('|{: >10d}'.format(epoch), end='')
+    for num in nums:
+        print('|{: >30.3f}'.format(num), end='')
+    print('|')
 
 torch.save(generator.state_dict(), GEN_SAVE_PATH)
 torch.save(discriminator.state_dict(), DISC_SAVE_PATH)        
