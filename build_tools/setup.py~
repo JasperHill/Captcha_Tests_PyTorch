@@ -1,6 +1,0 @@
-from setuptools import setup, Extension
-from torch.utils import cpp_extension
-
-setup(name='basis_rot_cpp',
-      ext_modules=[cpp_extension.CppExtension('basis_rot_cpp', ['Custom_Layers.cpp'])],
-      cmdclass={'build_ext' : cpp_extension.BuildExtension})

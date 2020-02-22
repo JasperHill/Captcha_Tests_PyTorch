@@ -45,22 +45,23 @@ IMG_CHANNELS =   3
 ## create the discriminator and generator
 ######################################################################################
 
-## the generator always produces 4-channel PIL images
+## the generator always produces 3-channel PIL images
 ## no need to specify output shape
 class Generator(nn.Module):
     def __init__(self, input_shape):
         super(Generator, self).__init__()
         self.basis_rotation = BasisRotation(input_shape=input_shape,
-                                            output_channels=input_shape[0])
+                                            output_channels=10*N)
         
-        self.projection = Projection(input_shape=input_shape,
+        self.projection = Projection(input_shape=[10*N,D,D],
                                      output_shape=[IMG_CHANNELS,IMG_HEIGHT,IMG_WIDTH])
 
 
     def forward(self, x):
         x = self.basis_rotation(x)
         x = self.projection(x)
-
+        #x = torch.sigmoid(x)
+        
         return x
 
 class Discriminator(nn.Module):
@@ -68,13 +69,13 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
 
         self.projection = Projection(input_shape=input_shape,
-                                     output_shape=[N,D,D])
+                                     output_shape=[1,D,D])
         
-        self.basis_rotation = BasisRotation(input_shape=[N,D,D],
-                                            output_channels=N)
+        self.basis_rotation = BasisRotation(input_shape=[1,D,D],
+                                            output_channels=1)
 
-        self.vectorizer = Vectorizer(input_shape=[N,D,D], output_channels=2)
-        self.linear = nn.Linear(in_features=2*D, out_features=1)
+        self.vectorizer = Vectorizer(input_shape=[1,D,D], output_channels=1)
+        self.linear = nn.Linear(in_features=D, out_features=1)
         self.sigmoid = nn.Sigmoid()
         
     def forward(self, x):        
@@ -96,15 +97,35 @@ class Discriminator(nn.Module):
 
         return num_features
 
+    
+class Solver(nn.Module):
+    def __init__(self, input_shape, output_shape):
+        super(Solver, self).__init__()
+        self.input_shape = input_shape[1:]
+        self.output_shape = output_shape
 
+        self.projection = Projection(input_shape=input_shape,
+                                     output_shape=[N,D,D])
+        
+        self.basis_rotation = BasisRotation(input_shape=[N,D,D],
+                                            output_channels=N)
+
+        self.vectorizer = Vectorizer(input_shape=[N,D,D],
+                                     output_channels=N)
+
+    def forward(self, x):
+        x = self.projection(x)
+        x = self.basis_rotation(x)
+        x = self.vectorizer(x)
+        x = F.normalize(x, dim=2)
+
+        return x
+    
 GEN_SAVE_PATH = "./gen_saves.pth"
 DISC_SAVE_PATH = "./disc_saves.pth"
 
 generator = Generator(input_shape=[N,D,D])
 discriminator = Discriminator(input_shape=[IMG_CHANNELS,IMG_HEIGHT,IMG_WIDTH])
-
-gen_optimizer = optim.Adam(generator.parameters())
-disc_optimizer = optim.Adam(discriminator.parameters())
 
 if save:
     torch.save(generator.state_dict(), GEN_SAVE_PATH)

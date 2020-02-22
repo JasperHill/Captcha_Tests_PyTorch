@@ -55,13 +55,16 @@ class BasisRotation(nn.Module):
         self.output_channels = output_channels
 
         ## initialize each square operator of the rank-4 tensor as an identity operator
-        R = np.zeros([self.output_channels,self.input_channels,self.mat_dim,self.mat_dim])
-        for i in range(self.output_channels):
-            for j in range(self.input_channels):
-                for  k in range(self.mat_dim):
-                    R[i][j][k][k] = 1
+        R = torch.rand([self.output_channels,self.input_channels,self.mat_dim,self.mat_dim])
+        #c = 1/(self.output_channels * self.input_channels * self.mat_dim)
+        c = 1
+        
+        #for i in range(self.output_channels):
+            #for j in range(self.input_channels):
+                #for  k in range(self.mat_dim):
+                    #R[i][j][k][k] = c
 
-        self.R = nn.Parameter(torch.tensor(R, dtype=torch.float))
+        self.R = nn.Parameter(c*R)
         
     def forward(self, input):
         return BasisRotationOperation.apply(input, self.R)
@@ -104,17 +107,19 @@ class Projection(nn.Module):
         self.output_channels = output_shape[-3]
 
         ## initialize left- and right- hand operators as identity operators on the smallest dimension between input and output shapes
-        P = np.zeros([self.output_channels, self.input_channels, self.output_shape[-2], self.input_shape[-2]])
-        PT = np.zeros([self.output_channels, self.input_channels, self.input_shape[-1], self.output_shape[-1]])
-
-        for i in range(self.output_channels):
-            for j in range(self.input_channels):
-                for k in range(min([self.input_shape[-2], self.input_shape[-1], self.output_shape[-2], self.output_shape[-1]])):
-                    P[i][j][k][k] = 1
-                    PT[i][j][k][k] = 1
-
-        self.P = nn.Parameter(torch.tensor(P, dtype=torch.double))
-        self.PT = nn.Parameter(torch.tensor(PT, dtype=torch.double))
+        P = torch.rand([self.output_channels, self.input_channels, self.output_shape[-2], self.input_shape[-2]])
+        PT = torch.rand([self.output_channels, self.input_channels, self.input_shape[-1], self.output_shape[-1]])
+        #c = 1
+        c = 1/(self.input_channels * max(self.output_shape[-2],self.output_shape[-1]))
+        
+        #for i in range(self.output_channels):
+            #for j in range(self.input_channels):
+                #for k in range(min([self.input_shape[-2], self.input_shape[-1], self.output_shape[-2], self.output_shape[-1]])):
+                    #P[i][j][k][k] = c
+                    #PT[i][j][k][k] = c
+         
+        self.P = nn.Parameter(c*P)
+        self.PT = nn.Parameter(c*PT)
         
     def forward(self, input):
         return ProjectionOperation.apply(input, self.P, self.PT)
@@ -152,7 +157,12 @@ class Vectorizer(nn.Module):
         self.output_channels = output_channels
         self.input_channels = input_shape[-3]
         self.dim = input_shape[-1]
-        self.X = nn.Parameter(torch.tensor(np.ones([self.output_channels, self.input_channels, self.dim]), dtype=torch.double))
+
+        # normalization coefficient to ensure transformed matrix elements initially lie within (0,1)
+        #c = 1/(self.output_channels * self.input_channels * self.dim)
+        c = 0.5
+        self.X = nn.Parameter(1 - c*torch.rand([self.output_channels, self.input_channels, self.dim],
+                                               dtype=torch.double))
 
     def forward(self, input):
         return VectorizerFunction.apply(input, self.X)

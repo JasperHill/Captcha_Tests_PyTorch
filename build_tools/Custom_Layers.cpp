@@ -55,7 +55,7 @@ at::Tensor BasisRotation_forward(torch::Tensor input, torch::Tensor R)
 	  {
 	    for (j = 0; j < input_channels; j++)
 	      {
-		output[n][i] += at::chain_matmul({R[i][j], input[n][i], at::transpose(R[i][j],0,1)});
+		output[n][i] += at::chain_matmul({R[i][j], input[n][j], at::transpose(R[i][j],0,1)});
 	      }
 	  }
       }
