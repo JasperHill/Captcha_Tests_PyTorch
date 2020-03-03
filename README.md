@@ -7,8 +7,7 @@ This work investigates the efficacy of a neural network based on the high-rank l
 Within the `build_tools` subdirectory, calling `Captcha_GAN.py --save_model` will initialize the GAN and create state dictionaries for the generator and discriminator at `build_tools/gen_saves.pth` and `build_tools/disc_saves.pth` respectively. All configuration details are defined in `MODEL_CONSTANTS.py`. They are:
 * `BATCH_SIZE`
 * `NUM_EPOCHS`
-* `EPSILON`, which is the tolerance for false and true labels
-⋅⋅* i.e. the label for a synthetic captcha image will be a random double between 0 and EPSILON while that for an authentic image will be a double greater than 1-EPSILON
+* `EPSILON`, which is the range for false and true labels (i.e. (0 - EPSILON) for false and (1-EPSILON - 1) for true)
 * `GEN_LR`, which is the generator learning rate
 * `DISC_LR`, the discriminator learning rate
 * `GEN_SAVE_PATH`, the path for the generator state dictionary
