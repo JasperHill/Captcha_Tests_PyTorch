@@ -8,7 +8,7 @@ Within the `build_tools` subdirectory, calling `Captcha_GAN.py --save_model` wil
 * `BATCH_SIZE`
 * `NUM_EPOCHS`
 * `EPSILON`, which is the tolerance for false and true labels
-..* i.e. the label for a synthetic captcha image will be a random double between 0 and EPSILON while that for an authentic image will be a double greater than 1-EPSILON
+⋅⋅* i.e. the label for a synthetic captcha image will be a random double between 0 and EPSILON while that for an authentic image will be a double greater than 1-EPSILON
 * `GEN_LR`, which is the generator learning rate
 * `DISC_LR`, the discriminator learning rate
 * `GEN_SAVE_PATH`, the path for the generator state dictionary
