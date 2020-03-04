@@ -56,8 +56,8 @@ class BasisRotation(nn.Module):
 
         ## initialize each square operator of the rank-4 tensor as an identity operator
         R = torch.rand([self.output_channels,self.input_channels,self.mat_dim,self.mat_dim])
-        #c = 1/(self.output_channels * self.input_channels * self.mat_dim)
-        c = 1
+        c = 1/(self.output_channels * self.input_channels * self.mat_dim)
+        #c = 1
         
         #for i in range(self.output_channels):
             #for j in range(self.input_channels):
@@ -102,7 +102,7 @@ class Projection(nn.Module):
         super(Projection, self).__init__()
         self.input_shape = input_shape
         self.output_shape = output_shape
-        
+
         self.input_channels = input_shape[-3]
         self.output_channels = output_shape[-3]
 

@@ -50,43 +50,32 @@ IMG_CHANNELS =   3
 class Generator(nn.Module):
     def __init__(self, input_shape):
         super(Generator, self).__init__()
-        self.basis_rotation = BasisRotation(input_shape=input_shape,
-                                            output_channels=10*N)
+        self.projection0 = Projection(input_shape=(input_shape),
+                                     output_shape=(IMG_CHANNELS,IMG_HEIGHT,IMG_WIDTH))
         
-        self.projection = Projection(input_shape=[10*N,D,D],
-                                     output_shape=[IMG_CHANNELS,IMG_HEIGHT,IMG_WIDTH])
-
 
     def forward(self, x):
-        x = self.basis_rotation(x)
-        x = self.projection(x)
-        #x = torch.sigmoid(x)
+        x = self.projection0(x)
         
         return x
 
 class Discriminator(nn.Module):
     def __init__(self, input_shape):
         super(Discriminator, self).__init__()
-
-        self.projection = Projection(input_shape=input_shape,
-                                     output_shape=[1,D,D])
+        self.projection0 = Projection(input_shape=input_shape,
+                                     output_shape=(N,1,1))
         
-        self.basis_rotation = BasisRotation(input_shape=[1,D,D],
-                                            output_channels=1)
-
-        self.vectorizer = Vectorizer(input_shape=[1,D,D], output_channels=1)
-        self.linear = nn.Linear(in_features=D, out_features=1)
+        self.linear = nn.Linear(in_features=N, out_features=1)
         self.sigmoid = nn.Sigmoid()
         
-    def forward(self, x):        
-        x = self.projection(x)
-        x = self.basis_rotation(x)
-        x = self.vectorizer(x)
-        
+    def forward(self, x):
+        x = self.projection0(x)
         x = x.view(-1, self.num_flat_features(x)).to(torch.float)
+
         x = self.linear(x)
+        x = self.sigmoid(x.to(torch.double))
         
-        return self.sigmoid(x)
+        return x
 
     def num_flat_features(self, x):
         size = x.size()[1:]
@@ -105,12 +94,12 @@ class Solver(nn.Module):
         self.output_shape = output_shape
 
         self.projection = Projection(input_shape=input_shape,
-                                     output_shape=[N,D,D])
+                                     output_shape=(N,D,D))
         
-        self.basis_rotation = BasisRotation(input_shape=[N,D,D],
+        self.basis_rotation = BasisRotation(input_shape=(N,D,D),
                                             output_channels=N)
 
-        self.vectorizer = Vectorizer(input_shape=[N,D,D],
+        self.vectorizer = Vectorizer(input_shape=(N,D,D),
                                      output_channels=N)
 
     def forward(self, x):
@@ -124,8 +113,8 @@ class Solver(nn.Module):
 GEN_SAVE_PATH = "./gen_saves.pth"
 DISC_SAVE_PATH = "./disc_saves.pth"
 
-generator = Generator(input_shape=[N,D,D])
-discriminator = Discriminator(input_shape=[IMG_CHANNELS,IMG_HEIGHT,IMG_WIDTH])
+generator = Generator(input_shape=(N,D,D))
+discriminator = Discriminator(input_shape=(IMG_CHANNELS,IMG_HEIGHT,IMG_WIDTH))
 
 if save:
     torch.save(generator.state_dict(), GEN_SAVE_PATH)
