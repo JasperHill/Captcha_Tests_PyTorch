@@ -44,8 +44,8 @@ at::Tensor BasisRotation_forward(torch::Tensor input, torch::Tensor R)
   //optimize with some nifty parallelization
 #pragma omp parallel default(none) schedule(dynamic)			\
   firstprivate(batch_size, output_channels, input_channels, R, input)	\
-  shared(n, i, output)							\
-  private(j)
+  shared(output)							\
+  private(n, i, j)
   {
 #pragma omp for nowait
     
@@ -91,8 +91,8 @@ std::vector< at::Tensor > BasisRotation_backward(torch::Tensor input, torch::Ten
   //parallel loop for grad_input tensor
 #pragma omp parallel default(none) schedule(dynamic)			\
   firstprivate(batch_size, output_channels, input_channels, inner_dim, R_a, grad_output_a, input_a) \
-  shared(n, ii, j, k, grad_input_a)					\
-  private(i,jj,kk)
+  shared(grad_input_a)							\
+  private(n,i,ii,j,k,jj,kk)
   {
 #pragma omp for nowait
     
@@ -126,8 +126,8 @@ std::vector< at::Tensor > BasisRotation_backward(torch::Tensor input, torch::Ten
 
 #pragma omp parallel default(none) schedule(dynamic)			\
   firstprivate(batch_size, output_channels, input_channels, inner_dim, R_a, grad_output_a, input_a) \
-  shared(i, ii, j, k, grad_R_a)						\
-  private(n,jj,kk)
+  shared(grad_R_a)							\
+  private(n,i,ii,j,k,jj,kk)
     {
 #pragma omp for nowait
       //shared loop
@@ -189,8 +189,8 @@ at::Tensor Projection_forward(torch::Tensor input, torch::Tensor P, torch::Tenso
 
 #pragma omp parallel default(none) schedule(dynamic)			\
   firstprivate(batch_size, output_channels, input_channels, P, input)	\
-  shared(n, i, output)							\
-  private(j)
+  shared(output)							\
+  private(n,i,j)
   {    
 #pragma omp for nowait    
     
@@ -244,8 +244,8 @@ std::vector< at::Tensor > Projection_backward(torch::Tensor input, torch::Tensor
 
 #pragma omp parallel default(none) schedule(dynamic)			\
   firstprivate(batch_size, output_channels, input_channels, M, N, Mp, Np, P_a, Pt_a, input_a, grad_output_a) \
-  shared(n, ii, j, k, grad_input_a)					\
-  private(i,jp,kp)
+  shared(grad_input_a)							\
+  private(n,i,ii,j,k,jp,kp)
   {
 #pragma omp for nowait
     //shared loop
@@ -279,8 +279,8 @@ std::vector< at::Tensor > Projection_backward(torch::Tensor input, torch::Tensor
     
 #pragma omp parallel default(none) schedule(dynamic)			\
   firstprivate(batch_size, output_channels, input_channels, M, N, Mp, Np, P_a, Pt_a, input_a, grad_output_a) \
-  shared(i,ii,jp,j)							\
-  private(n,k,kp)
+  shared(grad_P_a)							\
+  private(n,i,ii,j,jp,k,kp)
   {
   
 #pragma omp for nowait
@@ -313,8 +313,8 @@ std::vector< at::Tensor > Projection_backward(torch::Tensor input, torch::Tensor
     
 #pragma omp parallel default(none) schedule(dynamic)			\
   firstprivate(batch_size, output_channels, input_channels, M, N, Mp, Np, P_a, Pt_a, input_a, grad_output_a) \
-  shared(i,ii,k,kp)							\
-  private(n,j,jp)
+  shared(grad_Pt_a)							\
+  private(n,i,ii,j,j,jp,k,kp)
     {
 #pragma omp for nowait
       //shared loop
